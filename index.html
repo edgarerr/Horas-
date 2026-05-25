@@ -71,7 +71,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 /* ── Calendar ── */
 .cal-wrap{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--surface)}
 .day-headers{display:grid;grid-template-columns:48px repeat(5,1fr);flex-shrink:0;border-bottom:1px solid var(--border)}
-.dh-empty{background:var(--surface)}
+.dh-empty{background:var(--surface);display:flex;align-items:stretch}
 .dh{padding:8px 6px;text-align:center;border-left:1px solid var(--border);cursor:pointer;transition:background .1s;position:relative}
 .dh:hover{background:var(--accent-lt)}
 .dh-wd{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -88,6 +88,28 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .launched-badge{display:none;position:absolute;top:4px;right:4px;width:14px;height:14px;border-radius:50%;background:var(--green);align-items:center;justify-content:center}
 .launched-badge svg{width:8px;height:8px;stroke:#fff;stroke-width:3;fill:none}
 .dh.launched .launched-badge{display:flex}
+
+/* checkbox row */
+.dh-check-row{display:flex;align-items:center;justify-content:center;margin-top:5px;padding-top:4px;border-top:1px solid var(--border)}
+.day-check{
+  appearance:none;-webkit-appearance:none;
+  width:14px;height:14px;border-radius:3px;
+  border:1.5px solid var(--border2);
+  background:transparent;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;transition:all .15s;flex-shrink:0;
+}
+.day-check:hover{border-color:var(--green)}
+.day-check:checked{background:var(--green);border-color:var(--green)}
+.day-check:checked::after{
+  content:'';position:absolute;
+  width:8px;height:8px;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpolyline points='20 6 9 17 4 12' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size:contain;background-repeat:no-repeat;background-position:center;
+}
+.check-lbl{font-size:9px;color:var(--muted);margin-left:4px;letter-spacing:.04em;text-transform:uppercase;font-weight:500;line-height:1}
+.dh.launched .check-lbl{color:var(--green)}
+.dh.launched .day-check-wrap .check-lbl{color:var(--green)}
 
 /* launch btn in header */
 .launch-btn{
@@ -470,8 +492,12 @@ function weekDays(){const d=[];for(let i=0;i<5;i++){const x=new Date(curMon);x.s
 // ── Launch ──
 function toggleLaunch(){
   if(!selDay)return;
-  launched[selDay]=!launched[selDay];
-  if(!launched[selDay])delete launched[selDay];
+  toggleLaunchKey(selDay);
+}
+function toggleLaunchKey(key){
+  launched[key]=!launched[key];
+  if(!launched[key])delete launched[key];
+  // update selDay state if it matches
   scheduleSave();renderHeaders();renderGrid();renderDayIndicator();renderLaunchStrip();
 }
 function renderLaunchStrip(){
@@ -593,15 +619,19 @@ function renderDayIndicator(){
 // ── Render headers ──
 function renderHeaders(){
   const days=weekDays(),todayKey=dk(new Date());
-  const svgCheck=`<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
   document.getElementById('day-headers').innerHTML='<div class="dh-empty"></div>'+
     days.map((d,i)=>{
       const key=dk(d);
       const isT=key===todayKey,isS=key===selDay,isL=!!launched[key];
       return`<div class="dh${isT?' today':''}${isS?' sel-day':''}${isL?' launched':''}" onclick="clickDayHeader('${key}')">
-        <div class="launched-badge">${svgCheck}</div>
         <div class="dh-wd">${DIAS_S[i]}</div>
         <span class="dh-num">${d.getDate()}</span>
+        <div class="dh-check-row">
+          <input type="checkbox" class="day-check" ${isL?'checked':''} 
+            onclick="event.stopPropagation();toggleLaunchKey('${key}')" 
+            title="${isL?'Clica para desmarcar':'Marcar como lançado'}"/>
+          <span class="check-lbl">${isL?'Lançado':''}</span>
+        </div>
       </div>`;
     }).join('');
 }
