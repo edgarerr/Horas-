@@ -66,7 +66,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:13
 .tbtn:hover{background:var(--accent-lt);color:var(--text)}
 
 /* ── Body ── */
-.body{display:grid;grid-template-columns:1fr 260px;flex:1;min-height:0;overflow:hidden}
+.body{display:grid;grid-template-columns:minmax(0,1fr) 250px 230px;flex:1;min-height:0;overflow:hidden}
 
 /* ── Calendar ── */
 .cal-wrap{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--surface)}
@@ -239,6 +239,25 @@ input[type=number]{font-family:var(--mono)}
 .modal-total-lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .modal-total-val{font-family:var(--mono);font-size:13px;font-weight:500}
 
+/* Read-only daily and weekly summaries */
+.day-totals{display:grid;grid-template-columns:48px repeat(5,minmax(0,1fr));flex-shrink:0;border-top:1px solid var(--border);background:var(--card)}
+.day-total{padding:11px 3px;text-align:center;border-left:1px solid var(--border);font-family:var(--mono);font-size:12px;font-weight:500}
+.day-total-label{display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted)}
+.week-summary{min-height:0;overflow-y:auto;padding:16px 14px;border-left:1px solid var(--border);background:var(--surface)}
+.week-title{font-family:var(--serif);font-size:20px;margin-bottom:5px}
+.week-note,.week-empty{font-size:11px;color:var(--muted);line-height:1.6}
+.week-total{font-family:var(--mono);font-size:21px;margin:18px 0 5px}
+.week-progress{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin:10px 0 18px}
+.week-progress span{display:block;height:100%;background:var(--green)}
+.week-project{padding:12px 0;border-top:1px solid var(--border)}
+.week-project-name{display:flex;align-items:center;gap:7px;font-weight:500;overflow-wrap:anywhere}
+.week-project-values{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;margin-top:8px}
+.week-project .week-progress{margin:8px 0 0;height:3px}
+@media(min-width:769px) and (max-width:1100px){
+  .body{grid-template-columns:minmax(0,1fr) 250px}
+  .side{grid-column:2;grid-row:1 / 3}
+  .week-summary{grid-column:1;border-left:none;border-top:1px solid var(--border);max-height:220px}
+}
 /* ── Mobile ── */
 @media(max-width:768px){
   html,body{overflow:auto;height:auto}
@@ -251,6 +270,9 @@ input[type=number]{font-family:var(--mono)}
   .nbtn .btn-txt{display:none}
   .cal-wrap{border-right:none;min-height:0;height:auto}
   .day-headers{grid-template-columns:32px repeat(5,1fr)}
+  .day-totals{grid-template-columns:32px repeat(5,minmax(0,1fr))}
+  .day-total{font-size:11px}
+  .week-summary{border-left:none;border-top:1px solid var(--border)}
   .dh-num{font-size:14px}
   .hr-lbl{width:32px;font-size:9px;padding:2px 4px 0}
   .time-grid{grid-template-columns:32px repeat(5,1fr)!important}
@@ -310,6 +332,7 @@ input[type=number]{font-family:var(--mono)}
     <div class="cal-wrap">
       <div class="day-headers" id="day-headers"><div class="dh-empty"></div></div>
       <div class="grid-scroll"><div class="time-grid" id="time-grid"></div></div>
+      <div class="day-totals" id="day-totals" aria-label="Total de horas por dia" aria-live="polite"></div>
     </div>
     <div class="side">
       <div class="side-top">
@@ -378,6 +401,11 @@ input[type=number]{font-family:var(--mono)}
         </div>
       </div>
     </div>
+    <aside class="week-summary" aria-label="Resumo semanal">
+      <h2 class="week-title">Resumo semanal</h2>
+      <p class="week-note">Semana visível · base de 40 horas<br>Todas as entradas registadas</p>
+      <div id="week-summary-content" aria-live="polite"></div>
+    </aside>
   </div>
 </div>
 
@@ -636,8 +664,44 @@ function renderHeaders(){
     }).join('');
 }
 
+// Summaries only read existing entries; they never save or change stored data.
+function weeklySummary(){
+  const daily=weekDays().map(d=>{
+    const key=dk(d),entries=db[key]||[];
+    return {key,entries,hours:entries.reduce((sum,e)=>sum+Number(e.dur),0)};
+  });
+  const byProject=new Map();
+  daily.forEach(day=>day.entries.forEach(e=>{
+    const item=byProject.get(e.proj)||{hours:0,color:projects[e.proj]?.color||e.color||COLORS[0]};
+    item.hours+=Number(e.dur);byProject.set(e.proj,item);
+  }));
+  return {daily,total:daily.reduce((sum,d)=>sum+d.hours,0),rows:[...byProject].sort((a,b)=>b[1].hours-a[1].hours)};
+}
+function renderSummaries(){
+  const {daily,total,rows}=weeklySummary();
+  const pct=h=>(h/40*100).toLocaleString('pt-PT',{maximumFractionDigits:1})+'%';
+  document.getElementById('day-totals').innerHTML='<div class="day-total-label">Total</div>'+daily.map(d=>`<div class="day-total" title="Total de horas registadas em ${d.key}">${fmtDur(d.hours)}</div>`).join('');
+  const content=document.getElementById('week-summary-content');
+  content.innerHTML=`<div class="week-total">${fmtDur(total)} <span class="week-note">/ 40h</span></div>
+    <div class="week-note">${pct(total)} da semana · ${total>40?fmtDur(total-40)+' acima das 40h':total===40?'40h completas':fmtDur(40-total)+' por preencher'}</div>
+    <div class="week-progress"><span style="width:${Math.min(total/40*100,100)}%"></span></div>`;
+  if(!rows.length){content.innerHTML+='<p class="week-empty">Ainda não há horas nesta semana.</p>';return;}
+  rows.forEach(([name,v])=>{
+    const row=document.createElement('div');row.className='week-project';
+    const heading=document.createElement('div');heading.className='week-project-name';
+    const dot=document.createElement('span');dot.className='proj-color';dot.style.backgroundColor=v.color;
+    heading.append(dot,document.createTextNode(name));row.append(heading);
+    const values=document.createElement('div');values.className='week-project-values';
+    const hours=document.createElement('span');hours.textContent=fmtDur(v.hours);
+    const percent=document.createElement('span');percent.textContent=pct(v.hours);values.append(hours,percent);row.append(values);
+    const track=document.createElement('div');track.className='week-progress';
+    const bar=document.createElement('span');bar.style.width=Math.min(v.hours/40*100,100)+'%';bar.style.backgroundColor=v.color;track.append(bar);row.append(track);content.append(row);
+  });
+}
+
 // ── Render grid ──
 function renderGrid(){
+  renderSummaries();
   const days=weekDays(),todayKey=dk(new Date());
   const tg=document.getElementById('time-grid');
   const hh=window.innerWidth<=768?44:56;
@@ -722,3 +786,4 @@ window.addEventListener('resize',()=>{if(accessToken)renderGrid();});
 </script>
 </body>
 </html>
+
